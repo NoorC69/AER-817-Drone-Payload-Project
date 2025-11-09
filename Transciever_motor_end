@@ -1,0 +1,46 @@
+// Motor 1 movement x direction - gimbal
+// Motor 2 movement y direction - gimbal
+
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+#define led 3
+RF24 radio(7, 8); // CE, CSN
+const byte addresses[][6] = {"00001", "00002"};
+
+struct Payload {
+  int16_t ax;   // angle X
+  int16_t ay;   // angle Y
+};
+
+bool buttonState = 0;
+
+void setup() {
+  pinMode(led, OUTPUT);
+  radio.begin();
+  radio.openWritingPipe(addresses[1]);    // 00002
+  radio.openReadingPipe(1, addresses[0]); // 00001
+  radio.setPALevel(RF24_PA_MIN);
+}
+
+void loop() {
+  delay(5);
+
+  radio.stopListening();
+
+  int potValue_x = analogRead(A0);
+  int potValue_y = analogRead(A1);
+  Payload p;
+  p.ax = map(potValue_x, 0, 1023, 0, 180);
+  p.ay = map(potValue_y, 0, 1023, 0, 180);
+
+  radio.write(&p, sizeof(p));   // send both together
+
+  delay(5);
+  radio.startListening();
+
+  while (!radio.available());   // waits for receiver’s reply
+  radio.read(&buttonState, sizeof(buttonState));
+  digitalWrite(led, buttonState ? HIGH : LOW);
+}
