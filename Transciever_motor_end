@@ -1,3 +1,4 @@
+
 // Motor 1 movement x direction - gimbal
 // Motor 2 movement y direction - gimbal
 
@@ -16,6 +17,23 @@ struct Payload {
 
 bool buttonState = 0;
 
+int lastAx = 0;
+int lastAy = 0;
+
+int smoothRead(int pin){
+  long sum = 0;
+  const int N = 5;
+  for (int i =0; i <N; i++){
+
+  sum += analogRead(pin);
+
+  }
+  
+return sum/N;
+
+}
+
+
 void setup() {
   pinMode(led, OUTPUT);
   radio.begin();
@@ -29,18 +47,35 @@ void loop() {
 
   radio.stopListening();
 
-  int potValue_x = analogRead(A0);
-  int potValue_y = analogRead(A1);
+  int potValue_x = smoothRead(A0);
+  int potValue_y = smoothRead(A1);
+
   Payload p;
   p.ax = map(potValue_x, 0, 1023, 0, 180);
   p.ay = map(potValue_y, 0, 1023, 0, 180);
 
-  radio.write(&p, sizeof(p));   // send both together
+  p.ax = constrain(p.ax, 0, 180);
+  p.ay = constrain(p.ay, 0, 180);
+
+  const int DEAD_BAND = 2;
+  
+  if (abs(p.ax - lastAx) > DEAD_BAND || abs(p.ay - lastAy) > DEAD_BAND) {
+    lastAx = p.ax;
+    lastAy = p.ay;
+    radio.write(&p, sizeof(p));   // send both together ONLY when changed enough
+  }
+
 
   delay(5);
   radio.startListening();
 
-  while (!radio.available());   // waits for receiver’s reply
-  radio.read(&buttonState, sizeof(buttonState));
-  digitalWrite(led, buttonState ? HIGH : LOW);
+  unsigned long startTime = millis();
+  while (!radio.available()) {
+    if (millis() - startTime > 50) { // 50 ms timeout
+      return; // skip reading buttonState this loop
+    }
+  }
+
+  
 }
+
