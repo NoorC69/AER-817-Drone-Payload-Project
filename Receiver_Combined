@@ -1,0 +1,72 @@
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Servo.h>
+
+#include <SD.h>                           //include SD module library
+#include  <TMRpcm.h>                       //include speaker control library
+
+// Motor Setup
+
+RF24 radio(7, 8); // CE, CSN
+const byte addresses[][6] = {"00001", "00002"};
+
+Servo myServoX;
+Servo myServoY;
+
+struct Payload {
+  int16_t ax;   // angle X (0..180)
+  int16_t ay;   // angle Y (0..180)
+};
+
+// Speaker Setup
+
+#define  SD_ChipSelectPin 2                //define CS pin
+
+TMRpcm tmrpcm;                            //create an object for speaker library
+
+// Script
+
+void setup() {
+
+  // Motor
+  
+  myServoX.attach(5);
+  myServoY.attach(3);
+
+  radio.begin();
+  radio.openWritingPipe(addresses[0]);    // 00001 (back to transmitter)
+  radio.openReadingPipe(1, addresses[1]); // 00002 (from transmitter)
+  radio.setPALevel(RF24_PA_MIN);
+  radio.startListening();
+
+  // Speaker
+
+  tmrpcm.speakerPin  = 9;                  //define speaker pin. 
+                                          //you  must use pin 9 of the Arduino Uno and Nano
+                                          //the  library is using this pin
+
+  if (!SD.begin(SD_ChipSelectPin)) {      //see  if the card is present and can be initialized
+
+    return;                               //don't  do anything more if not
+  }
+
+  tmrpcm.setVolume(6);                    //0  to 7. Set volume level
+}
+
+void loop() {
+
+  tmrpcm.play("01 November Rain (Original Mix).wav");         //the sound file will play on repeat
+  
+  if (radio.available()) {
+    Payload p;
+    radio.read(&p, sizeof(p));
+
+    // Clamp to valid servo range
+    int x = constrain(p.ax, 0, 180);
+    int y = constrain(p.ay, 0, 180);
+
+    myServoX.write(x);
+    myServoY.write(y);
+  }
+}
