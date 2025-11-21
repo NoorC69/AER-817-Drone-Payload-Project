@@ -6,7 +6,7 @@
 // Enter your WiFi credentials here
 // ===========================================
 const char* ssid     = "FBI Survelliance Van";
-const char* password = "Chocolate1996";
+const char* password = "xxx[add my password]";
 
 // ===========================================
 // Camera pins for FREENOVE ESP32-WROVER-CAM
