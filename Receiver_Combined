@@ -56,7 +56,7 @@ void setup() {
 
 void loop() {
 
-  tmrpcm.play("01 November Rain (Original Mix).wav");         //the sound file will play on repeat
+  tmrpcm.play("test1.wav");         //the sound file will play on repeat
   
   if (radio.available()) {
     Payload p;
