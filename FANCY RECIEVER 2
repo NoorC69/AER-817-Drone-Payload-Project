@@ -1,0 +1,66 @@
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Servo.h>
+#include <SD.h>
+#include <TMRpcm.h>
+
+RF24 radio(7, 8);
+const byte addresses[6] = "69696";
+
+struct Payload {
+  int16_t ax;
+  int16_t ay;
+  uint8_t mode;
+};
+
+Servo myServoX;
+Servo myServoY;
+TMRpcm tmrpcm;
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Receiver starting...");
+
+  // RF setup
+  radio.begin();
+  radio.openReadingPipe(1, addresses);   // listen on "69696"
+  radio.setPALevel(RF24_PA_MIN);
+  radio.startListening();
+
+  // Motors + sound setup (example)
+  myServoX.attach(5);
+  myServoY.attach(3);
+  tmrpcm.speakerPin = 9;
+  SD.begin(2);    // if you use pin 2 for SD CS
+}
+
+void loop() {
+  if (radio.available()) {
+    Payload p;
+    radio.read(&p, sizeof(p));   // <-- this pulls in the command
+
+    Serial.print("Got ax="); Serial.print(p.ax);
+    Serial.print(" ay="); Serial.print(p.ay);
+    Serial.print(" mode="); Serial.println(p.mode);
+
+    if (p.mode == 0) {
+      // MOTOR MODE
+      if (!myServoX.attached()) myServoX.attach(5);
+      if (!myServoY.attached()) myServoY.attach(3);
+      tmrpcm.stopPlayback();
+
+      myServoX.write(constrain(p.ax, 0, 180));
+      myServoY.write(constrain(p.ay, 0, 180));
+
+    } else {
+      // SOUND MODE
+      if (myServoX.attached()) myServoX.detach();
+      if (myServoY.attached()) myServoY.detach();
+
+      if (!tmrpcm.isPlaying()) {
+        tmrpcm.play("test1.wav");
+      }
+    }
+  }
+}
