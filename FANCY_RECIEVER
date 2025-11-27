@@ -1,0 +1,127 @@
+// RECEIVER / GIMBAL + SPEAKER
+
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Servo.h>
+#include <SD.h>
+#include <TMRpcm.h>
+
+// ---------- RF24 + Servos ----------
+
+RF24 radio(7, 8); // CE, CSN
+const byte addresses[][6] = {"00001", "00002"};
+
+Servo myServoX;
+Servo myServoY;
+
+struct Payload {
+  int16_t ax;   // angle X (0..180)
+  int16_t ay;   // angle Y (0..180)
+  uint8_t mode; // 0 = motor mode, 1 = sound mode
+};
+
+// ---------- SD + Audio ----------
+
+#define SD_ChipSelectPin 2   // SD CS pin (wire SD CS to D2)
+TMRpcm tmrpcm;
+
+bool motorMode = true;       // track current mode
+bool audioStarted = false;
+
+// ---------- Mode helpers ----------
+
+void enterMotorMode() {
+  if (!motorMode) {
+    Serial.println("Switching to MOTOR MODE");
+  }
+  motorMode = true;
+
+  // Stop any audio
+  tmrpcm.stopPlayback();
+  audioStarted = false;
+
+  // Attach servos (if not already)
+  if (!myServoX.attached()) myServoX.attach(5);
+  if (!myServoY.attached()) myServoY.attach(3);
+}
+
+void enterSoundMode() {
+  if (motorMode) {
+    Serial.println("Switching to SOUND MODE");
+  }
+  motorMode = false;
+
+  // Detach servos so Servo library releases Timer1
+  if (myServoX.attached()) myServoX.detach();
+  if (myServoY.attached()) myServoY.detach();
+
+  // Start audio if SD was initialized successfully
+  if (!tmrpcm.isPlaying()) {
+    tmrpcm.play("test1.wav"); // must exist on SD root
+    audioStarted = true;
+  }
+}
+
+// ---------- Setup ----------
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Receiver starting...");
+
+  // RF24 init
+  radio.begin();
+  radio.openWritingPipe(addresses[0]);    // not used much now
+  radio.openReadingPipe(1, addresses[1]); // 00002 (from ground station)
+  radio.setPALevel(RF24_PA_MIN);
+  radio.startListening();
+
+  // SD / Audio
+  tmrpcm.speakerPin = 9; // must be 9 on Uno/Nano
+
+  if (!SD.begin(SD_ChipSelectPin)) {
+    Serial.println("SD init FAILED - sound mode will not work.");
+  } else {
+    Serial.println("SD init OK.");
+  }
+
+  // Start in motor mode
+  myServoX.attach(5);
+  myServoY.attach(3);
+  motorMode = true;
+}
+
+// ---------- Loop ----------
+
+void loop() {
+  if (radio.available()) {
+    Payload p;
+    radio.read(&p, sizeof(p));
+
+    // Check requested mode from ground station
+    if (p.mode == 0) {
+      enterMotorMode();
+    } else {
+      enterSoundMode();
+    }
+
+    // If in motor mode, move servos
+    if (motorMode) {
+      int x = constrain(p.ax, 0, 180);
+      int y = constrain(p.ay, 0, 180);
+
+      myServoX.write(x);
+      myServoY.write(y);
+
+      // Debug
+      // Serial.print("Motor mode: X="); Serial.print(x);
+      // Serial.print(" Y="); Serial.print(y);
+      // Serial.print(" | mode="); Serial.println(p.mode);
+    } else {
+      // Sound mode: keep sound looping if we want continuous playback
+      if (!tmrpcm.isPlaying() && audioStarted) {
+        tmrpcm.play("test1.wav");
+      }
+    }
+  }
+}
