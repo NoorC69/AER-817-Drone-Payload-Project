@@ -2,19 +2,17 @@
 #include <WiFi.h>
 #include "esp_http_server.h"
 
+#include "FS.h"
+#include "SD_MMC.h"
+
 // ===========================================
-// Enter your WiFi credentials here
+// WiFi credentials
 // ===========================================
-const char* ssid     = "FBI Survelliance Van";
-const char* password = "xxx[add my password]";
+const char* ssid     = "ADD WIFI HOTSPOT";
+const char* password = "ADD PASSWORD";
 
 // ===========================================
 // Camera pins for FREENOVE ESP32-WROVER-CAM
-// (newer revision pinout)
-// ===========================================
-// ===========================================
-// Camera pins for FREENOVE ESP32-WROVER-CAM
-// (official mapping from Freenove / RandomNerd)
 // ===========================================
 #define PWDN_GPIO_NUM     -1
 #define RESET_GPIO_NUM    -1
@@ -31,10 +29,35 @@ const char* password = "xxx[add my password]";
 #define Y3_GPIO_NUM        5
 #define Y2_GPIO_NUM        4
 
-#define VSYNC_GPIO_NUM    25
+#define VSYNC_GPIO_NUM    25   // camera VSYNC - do NOT reuse
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+// ===========================================
+// Speaker configuration (safe pin)
+// ===========================================
+// Use GPIO16 on side header for piezo/buzzer
+#define AUDIO_PIN 13
+
+// Simple blocking beep, no LEDC
+void beep(uint16_t freq, uint16_t durationMs) {
+  if (freq == 0) return;
+
+  unsigned long periodMicros = 1000000UL / freq; // full wave
+  unsigned long halfPeriod   = periodMicros / 2;
+  unsigned long endTime      = millis() + durationMs;
+
+  while (millis() < endTime) {
+    digitalWrite(AUDIO_PIN, HIGH);
+    delayMicroseconds(halfPeriod);
+    digitalWrite(AUDIO_PIN, LOW);
+    delayMicroseconds(halfPeriod);
+  }
+}
+
+// ===========================================
+// HTTP server handles
+// ===========================================
 httpd_handle_t camera_httpd = NULL;
 httpd_handle_t stream_httpd = NULL;
 
@@ -77,15 +100,23 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
 <body>
   <h1>ESP32-CAM Live Stream</h1>
   <img src="" id="stream">
-  <p><button class="button" onclick="location.href='/capture'">Capture Photo</button></p>
+  <p>
+    <button class="button" onclick="location.href='/capture'">Capture Photo</button>
+  </p>
+  <p>
+    <button class="button" onclick="location.href='/play'">Play (beep)</button>
+  </p>
   <script>
     window.onload = function() {
-      document.getElementById("stream").src = window.location.origin.replace(/:\d+$/, "") + ":81/stream";
+      document.getElementById("stream").src =
+        window.location.origin.replace(/:\\d+$/, "") + ":81/stream";
     }
   </script>
 </body>
 </html>
 )rawliteral";
+
+// ============ HTTP HANDLERS ============
 
 static esp_err_t index_handler(httpd_req_t *req){
   httpd_resp_set_type(req, "text/html");
@@ -186,6 +217,16 @@ static esp_err_t capture_handler(httpd_req_t *req){
   return res;
 }
 
+// /play – simple beep and text response
+static esp_err_t play_handler(httpd_req_t *req){
+  Serial.println("HTTP /play called");
+  beep(2000, 150);  // short beep at 2 kHz
+
+  httpd_resp_set_type(req, "text/plain");
+  httpd_resp_send(req, "Play command received (beep on GPIO13)", HTTPD_RESP_USE_STRLEN);
+  return ESP_OK;
+}
+
 void startCameraServer(){
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80;
@@ -210,11 +251,19 @@ void startCameraServer(){
     .handler   = stream_handler,
     .user_ctx  = NULL
   };
+
+  httpd_uri_t play_uri = {
+    .uri       = "/play",
+    .method    = HTTP_GET,
+    .handler   = play_handler,
+    .user_ctx  = NULL
+  };
   
   Serial.printf("Starting web server on port: '%d'\n", config.server_port);
   if (httpd_start(&camera_httpd, &config) == ESP_OK) {
     httpd_register_uri_handler(camera_httpd, &index_uri);
     httpd_register_uri_handler(camera_httpd, &capture_uri);
+    httpd_register_uri_handler(camera_httpd, &play_uri);
   }
 
   config.server_port += 1;  // 81
@@ -233,6 +282,19 @@ void setup() {
   Serial.println("ESP32-CAM Freenove Starting...");
   Serial.println("=================================");
 
+  // ---- Speaker / tone setup on GPIO16 ----
+  pinMode(AUDIO_PIN, OUTPUT);
+  digitalWrite(AUDIO_PIN, LOW);
+
+  // ---- Mount SD card (internal slot) ----
+  Serial.println("Mounting SD card (built-in)...");
+  if (!SD_MMC.begin("/sdcard", true)) {   // 1-bit mode
+    Serial.println("SD_MMC mount FAILED (check card).");
+  } else {
+    Serial.println("SD_MMC mount OK.");
+  }
+
+  // ---- Camera setup ----
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer   = LEDC_TIMER_0;
@@ -277,6 +339,7 @@ void setup() {
   }
   Serial.println("Camera initialized successfully!");
 
+  // ---- WiFi ----
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
   
