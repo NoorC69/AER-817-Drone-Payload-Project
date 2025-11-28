@@ -1,51 +1,48 @@
-
-// Motor 1 movement x direction - gimbal
-// Motor 2 movement y direction - gimbal
+// TRANSMITTER: Reads 2 pots and sends angles over nRF24
 
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
 
-#define led 3
-RF24 radio(7, 8); // CE, CSN
-const byte addresses[][6] = {"00001", "00002"};
+RF24 radio(7, 8);               // CE, CSN
+const byte address[6] = "00005"; // 5-char address + null
 
 struct Payload {
   int16_t ax;   // angle X
   int16_t ay;   // angle Y
 };
 
-bool buttonState = 0;
-
 int lastAx = 0;
 int lastAy = 0;
 
-int smoothRead(int pin){
+int smoothRead(int pin) {
   long sum = 0;
   const int N = 5;
-  for (int i =0; i <N; i++){
-
-  sum += analogRead(pin);
-
+  for (int i = 0; i < N; i++) {
+    sum += analogRead(pin);
   }
-  
-return sum/N;
-
+  return sum / N;
 }
 
-
 void setup() {
-  pinMode(led, OUTPUT);
-  radio.begin();
-  radio.openWritingPipe(addresses[1]);    // 00002
-  radio.openReadingPipe(1, addresses[0]); // 00001
+  Serial.begin(115200);
+  Serial.println("Transmitter starting...");
+
+  if (!radio.begin()) {
+    Serial.println("RF24 init failed! Check wiring.");
+    while (1); // stop here
+  }
+
+  radio.openWritingPipe(address);      // TX to this address
   radio.setPALevel(RF24_PA_MIN);
+  radio.setDataRate(RF24_250KBPS);     // more reliable at distance
+  radio.stopListening();               // IMPORTANT: TX does NOT listen
+
+  Serial.println("RF24 ready, sending data...");
 }
 
 void loop() {
-  delay(5);
-
-  radio.stopListening();
+  delay(20);
 
   int potValue_x = smoothRead(A0);
   int potValue_y = smoothRead(A1);
@@ -58,24 +55,25 @@ void loop() {
   p.ay = constrain(p.ay, 0, 180);
 
   const int DEAD_BAND = 2;
-  
+
   if (abs(p.ax - lastAx) > DEAD_BAND || abs(p.ay - lastAy) > DEAD_BAND) {
     lastAx = p.ax;
     lastAy = p.ay;
-    radio.write(&p, sizeof(p));   // send both together ONLY when changed enough
-  }
 
+    Serial.print("Sending -> AX: ");
+    Serial.print(p.ax);
+    Serial.print(" | AY: ");
+    Serial.print(p.ay);
 
-  delay(5);
-  radio.startListening();
+    bool ok = radio.write(&p, sizeof(p));
 
-  unsigned long startTime = millis();
-  while (!radio.available()) {
-    if (millis() - startTime > 50) { // 50 ms timeout
-      return; // skip reading buttonState this loop
+    if (ok) {
+      Serial.println("  [OK]");
+    } else {
+      Serial.println("  [FAIL]");
     }
+  } else {
+    // Uncomment if you want to see when it skips
+    // Serial.println("No significant change, not sending.");
   }
-
-  
 }
-
