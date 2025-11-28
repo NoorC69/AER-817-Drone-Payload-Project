@@ -6,7 +6,7 @@
 #include <Servo.h>
 
 RF24 radio(7, 8);               // CE, CSN (must match wiring)
-const byte address[6] = "00005"; // same as transmitter
+const byte address[6] = "00001"; // same as transmitter
 
 Servo servoX; // X direction
 Servo servoY; // Y direction
@@ -31,51 +31,7 @@ void setup() {
 
   if (!radio.begin()) {
     Serial.println("RF24 init failed! Check wiring.");
-    while (1); // stop/*
-* Arduino Wireless Communication Tutorial
-*     Example 2 - Receiver Code
-*                
-* by Dejan Nedelkovski, www.HowToMechatronics.com
-* 
-* Library: TMRh20/RF24, https://github.com/tmrh20/RF24/
-*/
-
-#include <SPI.h>
-#include <nRF24L01.h>
-#include <RF24.h>
-#include <Servo.h>
-
-#define button 4
-
-RF24 radio(7, 8); // CE, CSN
-const byte addresses[][6] = {"00005", "00006"};
-Servo myServo;
-boolean buttonState = 0;
-
-void setup() {
-  pinMode(button, INPUT);
-  myServo.attach(5);
-  radio.begin();
-  radio.openWritingPipe(addresses[0]); // 00001
-  radio.openReadingPipe(1, addresses[1]); // 00002
-  radio.setPALevel(RF24_PA_MIN);
-}
-
-void loop() {
-  delay(5);
-  radio.startListening();
-  if ( radio.available()) {
-    while (radio.available()) {
-      int angleV = 0;
-      radio.read(&angleV, sizeof(angleV));
-      myServo.write(angleV);
-    }
-    delay(5);
-    radio.stopListening();
-    buttonState = digitalRead(button);
-    radio.write(&buttonState, sizeof(buttonState));
-  }
-} here
+    while (1); // stop here
   }
 
   radio.openReadingPipe(1, address);
@@ -94,7 +50,8 @@ void loop() {
 
     int ax = constrain(p.ax, 0, 180);
     int ay = constrain(p.ay, 0, 180);
-Serial.print("Received -> AX: ");
+
+    Serial.print("Received -> AX: ");
     Serial.print(ax);
     Serial.print(" | AY: ");
     Serial.println(ay);
