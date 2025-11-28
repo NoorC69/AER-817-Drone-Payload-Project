@@ -1,0 +1,122 @@
+// RECEIVER: Gets 2 angles over nRF24 and moves 2 servos
+
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Servo.h>
+
+RF24 radio(7, 8);               // CE, CSN (must match wiring)
+const byte address[6] = "00005"; // same as transmitter
+
+Servo servoX; // X direction
+Servo servoY; // Y direction
+
+struct Payload {
+  int16_t ax;   // angle X
+  int16_t ay;   // angle Y
+};
+
+unsigned long lastPacketTime = 0;
+const unsigned long SIGNAL_TIMEOUT = 2000; // 2 seconds
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Receiver starting...");
+
+  servoX.attach(5); // change pins if needed
+  servoY.attach(3);
+
+  servoX.write(90);
+  servoY.write(90);
+
+  if (!radio.begin()) {
+    Serial.println("RF24 init failed! Check wiring.");
+    while (1); // stop/*
+* Arduino Wireless Communication Tutorial
+*     Example 2 - Receiver Code
+*                
+* by Dejan Nedelkovski, www.HowToMechatronics.com
+* 
+* Library: TMRh20/RF24, https://github.com/tmrh20/RF24/
+*/
+
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Servo.h>
+
+#define button 4
+
+RF24 radio(7, 8); // CE, CSN
+const byte addresses[][6] = {"00005", "00006"};
+Servo myServo;
+boolean buttonState = 0;
+
+void setup() {
+  pinMode(button, INPUT);
+  myServo.attach(5);
+  radio.begin();
+  radio.openWritingPipe(addresses[0]); // 00001
+  radio.openReadingPipe(1, addresses[1]); // 00002
+  radio.setPALevel(RF24_PA_MIN);
+}
+
+void loop() {
+  delay(5);
+  radio.startListening();
+  if ( radio.available()) {
+    while (radio.available()) {
+      int angleV = 0;
+      radio.read(&angleV, sizeof(angleV));
+      myServo.write(angleV);
+    }
+    delay(5);
+    radio.stopListening();
+    buttonState = digitalRead(button);
+    radio.write(&buttonState, sizeof(buttonState));
+  }
+} here
+  }
+
+  radio.openReadingPipe(1, address);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.setDataRate(RF24_250KBPS); // must match transmitter
+  radio.startListening();
+
+  Serial.println("RF24 ready, listening for packets...");
+}
+
+void loop() {
+  if (radio.available()) {
+    Payload p;
+    radio.read(&p, sizeof(p));
+    lastPacketTime = millis();
+
+    int ax = constrain(p.ax, 0, 180);
+    int ay = constrain(p.ay, 0, 180);
+Serial.print("Received -> AX: ");
+    Serial.print(ax);
+    Serial.print(" | AY: ");
+    Serial.println(ay);
+
+    servoX.write(ax);
+    servoY.write(ay);
+  } else {
+    // Just to see if we are getting nothing
+    static unsigned long lastPrint = 0;
+    if (millis() - lastPrint > 1000) {
+      Serial.println("No packets yet... still listening");
+      lastPrint = millis();
+    }
+
+    // Optional: center if signal lost
+    if (millis() - lastPacketTime > SIGNAL_TIMEOUT && lastPacketTime != 0) {
+      // Uncomment if you want auto-centering:
+      /*
+      servoX.write(90);
+      servoY.write(90);
+      Serial.println("Signal lost, centering servos.");
+      */
+    }
+  }
+}
